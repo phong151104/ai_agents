@@ -145,3 +145,34 @@ async def kh02_tracking(model: nq57_client.KH02TrackingRequest):
         _model.trang_thai = status
     # Gọi service xử lý và format kết quả
     return await get_kh02_tracking_results(_model)
+@router.post("/nq57/mission/list/2")
+async def nq57_mission_list_v2(model: nq57_client.GetMissionRequest):
+    return await nq57_client.get_missions_refactor(model)
+
+
+@router.post("/nq57/mission/list/ordered")
+async def nq57_mission_list_ordered(model: GetSortedMissionList):
+    if model.trang_thai and isinstance(model.trang_thai, str):
+        model.trang_thai = map_status_label_to_key(model.trang_thai)
+
+    # Nếu không truyền kỳ báo cáo thì mặc định lấy tháng hiện tại
+    if not model.ky_bao_cao_from and not model.ky_bao_cao_to:
+        now = datetime.now()
+        model.ky_bao_cao_from = date_utils.get_start_of_month(now).strftime("%Y%m%d")
+        model.ky_bao_cao_to   = date_utils.get_end_of_month(now).strftime("%Y%m%d")
+
+    result = await nq57_client.get_mission_sorted(model)
+
+    # Sửa ở đây: check None trước khi truy cập key
+    if not result or not result.get('has_data'):
+        now = datetime.strptime(model.ky_bao_cao_from, "%Y%m%d")
+        # Lùi lại 1 tháng, trừ khi tháng 1 thì chuyển về tháng 12 năm trước
+        if now.month == 1:
+            prev_month = datetime(year=now.year - 1, month=12, day=now.day)
+        else:
+            prev_month = datetime(year=now.year, month=now.month - 1, day=now.day)
+        model.ky_bao_cao_from = date_utils.get_start_of_month(prev_month).strftime("%Y%m%d")
+        model.ky_bao_cao_to   = date_utils.get_end_of_month(prev_month).strftime("%Y%m%d")
+        return await nq57_client.get_mission_sorted(model)
+    else:
+        return result
